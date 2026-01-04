@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Kızma Bilader — Tek Dosya</title>
+<style>
+  :root{
+    --bg:#0f1117;            /* Arka plan */
+    --panel:#151823;         /* Paneller */
+    --text:#e6e8ef;          /* Metin */
+    --muted:#9aa0aa;         /* Yardımcı metin */
+    --accent:#4ade80;        /* Vurgular */
+    --danger:#fb7185;        /* Çakışma anı */
+    --grid:#1f2430;          /* Tahta zemin */
+    --cell:#232838;          /* Hücre */
+    --ring:#3b4050;          /* Çember yolu vurgusu */
+    --speed:280ms;           /* Taş hareket hızı */
+  }
+
+  /* Renk temaları (oyuncu taşları ve ev yolları) */
+  .p0 { --p:#60a5fa; --pLight:#93c5fd; }
+  .p1 { --p:#f59e0b; --pLight:#fcd34d; }
+  .p2 { --p:#10b981; --pLight:#6ee7b7; }
+  .p3 { --p:#ef4444; --pLight:#fca5a5; }
+
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    display:grid; min-height:100vh; grid-template-rows:auto 1fr auto;
+  }
+
+  header, footer{
+    background:var(--panel); padding:12px 16px; border-bottom:1px solid #1c1f2a;
+  }
+  header h1{ margin:0; font-size:18px; letter-spacing:.2px }
+  header .sub{ color:var(--muted); font-size:12px }
+
+  .wrap{
+    display:grid; grid-template-columns: 320px 1fr; gap:16px; padding:16px;
+  }
+  @media (max-width: 900px){
+    .wrap{ grid-template-columns: 1fr; }
+  }
+
+  /* Kontrol paneli */
+  .panel{
+    background:var(--panel); border:1px solid #1c1f2a; border-radius:12px; padding:12px;
+  }
+  .panel h2{ margin:4px 0 8px; font-size:16px }
+  .row{ display:flex; gap:8px; align-items:center; margin-bottom:8px }
+  .btn{
+    appearance:none; border:1px solid #2a2f3e; background:#1b1f2b; color:var(--text);
+    padding:8px 12px; border-radius:10px; cursor:pointer; transition:150ms ease;
+  }
+  .btn:hover{ border-color:#374055; transform:translateY(-1px) }
+  .btn:disabled{ opacity:.4; cursor:default }
+  .badge{
+    display:inline-flex; align-items:center; gap:6px;
+    padding:6px 10px; border-radius:999px; background:#1b2030; border:1px solid #2a2f3e;
+  }
+  .dot{ width:10px; height:10px; border-radius:50%; background:var(--p) }
+
+  .dice{
+    width:56px; height:56px; background:#121625; border:1px solid #2a2f3e; border-radius:12px;
+    display:grid; place-items:center; font-weight:700; font-size:20px; color:var(--accent);
+    transition: transform 220ms ease;
+  }
+  .dice.shake{ transform:rotate(8deg) scale(1.05) }
+
+  .log{
+    height:140px; overflow:auto; background:#111523; border:1px solid #202536;
+    border-radius:10px; padding:8px; font-size:12px; color:var(--muted);
+  }
+  .log b{ color:var(--text) }
+
+  /* Oyun tahtası */
+  .board{
+    background:var(--grid); border:1px solid #1c1f2a; border-radius:18px;
+    padding:16px; display:grid; place-items:center;
+  }
+  .grid{
+    width:min(80vmin,780px); aspect-ratio:1/1;
+    display:grid; grid-template-columns: repeat(11, 1fr); grid-template-rows: repeat(11, 1fr);
+    gap:6px; padding:12px; background:#141827; border-radius:14px;
+  }
+  .cell{
+    background:var(--cell); border-radius:8px; position:relative;
+    box-shadow: inset 0 0 0 1px #2a2f3e;
+  }
+
+  /* Yol: çember hücreleri hafif vurgulu */
+  .ring{ box-shadow: inset 0 0 0 2px var(--ring); }
+
+  /* Ev yolları ve başlangıç evleri */
+  .home, .start{ outline:2px solid var(--p); }
+  .home{ background:color-mix(in oklab, var(--pLight) 25%, var(--cell)); }
+  .start{ background:color-mix(in oklab, var(--p) 14%, var(--cell)); }
+
+  /* Taş */
+  .piece{
+    position:absolute; inset:6px; border-radius:12px; background:var(--p);
+    display:grid; place-items:center; color:#0e131f; font-weight:800;
+    box-shadow: 0 6px 14px color-mix(in oklab, var(--p) 30%, transparent);
+    transform:translate(0,0); transition: transform var(--speed) cubic-bezier(.2,.7,.2,1);
+    cursor:pointer; user-select:none;
+  }
+  .piece::after{
+    content:""; width:70%; height:55%; border-radius:50%;
+    background:color-mix(in oklab, white 20%, transparent);
+  }
+  .piece.hit{ animation: hit 320ms ease }
+  @keyframes hit{
+    20%{ transform:translate(0,-6px) scale(1.06) }
+  }
+
+  /* Kazanma bandı */
+  .banner{
+    position:absolute; inset:auto 16px 16px auto; background:#132034; color:var(--text);
+    border:1px solid #243049; border-radius:12px; padding:10px 12px; font-size:13px;
+    box-shadow: 0 12px 28px rgba(0,0,0,.35);
+  }
+  .banner .winner{ display:flex; align-items:center; gap:8px }
+  .winner .dot{ width:12px; height:12px }
+
+  /* Tooltip-benzeri küçük yardım */
+  .hint{
+    position:absolute; inset:16px auto auto 16px; background:#162138; color:var(--muted);
+    border:1px solid #243049; border-radius:10px; padding:8px 10px; font-size:12px;
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Kızma Bilader</h1>
+  <div class="sub">Şık CSS, net mantık, akıcı hareket. Tek dosya, canlıya hazır.</div>
+</header>
+
+<div class="wrap">
+  <div class="panel">
+    <h2>Oyun kontrol</h2>
+    <div class="row">
+      <button id="btnStart" class="btn">Yeni oyun</button>
+      <button id="btnDice" class="btn">Zar at</button>
+      <div id="dice" class="dice">—</div>
+    </div>
+
+    <div class="row">
+      <span class="badge p0"><span class="dot"></span> Mavi</span>
+      <span class="badge p1"><span class="dot"></span> Turuncu</span>
+      <span class="badge p2"><span class="dot"></span> Yeşil</span>
+      <span class="badge p3"><span class="dot"></span> Kırmızı</span>
+    </div>
+
+    <div class="row">
+      <label class="badge"><input id="players" type="range" min="2" max="4" value="4" />
+        <span>Oyuncu sayısı: <b id="playersVal">4</b></span>
+      </label>
+    </div>
+
+    <div class="row" style="flex-direction:column; align-items:flex-start">
+      <b>Kurallar (özet):</b>
+      <ul style="margin:6px 0 0; padding-left:16px; color:var(--muted)">
+        <li>6 atınca taş başlangıçtan çıkar veya bir taş daha hareket eder.</li>
+        <li>Geçerli hamle yoksa sıra paslanır.</li>
+        <li>Rakip hücresine inişte taş “yenir” ve başlangıca döner.</li>
+        <li>Tüm taşlar eve girince oyuncu kazanır.</li>
+      </ul>
+    </div>
+
+    <div class="row">
+      <div class="log" id="log"></div>
+    </div>
+  </div>
+
+  <div class="board">
+    <div class="grid" id="grid"></div>
+    <div class="banner" id="banner" style="display:none">
+      <div class="winner"><span class="dot"></span><b id="winnerName">Kazanan</b> kazandı!</div>
+    </div>
+    <div class="hint">Zarı at, geçerli taşlar yanıp söner; tıkla ve hareket et.</div>
+  </div>
+</div>
+
+<footer>
+  <small>Egemen için özenli yapıldı: animasyon, mantık ve görsel netlik birlikte. Özelleştirme kolay.</small>
+</footer>
+
+<script>
+/* ========= Model ========= */
+const STATE = {
+  players: 4,
+  turn: 0,
+  dice: null,
+  pieces: [],  // {id, player, posType: 'start'|'ring'|'home', index: number}
+  ring: [],    // 40 hücre (0..39)
+  homes: [[],[],[],[]], // her oyuncu: 4 home hücresi indexleri
+  starts: [[],[],[],[]],// her oyuncu: 4 başlangıç hücresi
+  enterIndex: [0,10,20,30], // her oyuncunun ring'e giriş noktası
+};
+
+/* ========= Tahta yerleşimi: 11x11 grid ========= */
+/* Ring yol koordinatları (Mensch ärgere dich nicht düzenine yakın spiral yol) */
+const ringPath = [
+  [5,0],[5,1],[5,2],[5,3],[5,4],[6,4],[7,4],[8,4],[9,4],[10,4],
+  [10,5],[9,5],[8,5],[7,5],[6,5],[6,6],[6,7],[6,8],[6,9],[6,10],
+  [5,10],[5,9],[5,8],[5,7],[5,6],[4,6],[3,6],[2,6],[1,6],[0,6],
+  [0,5],[1,5],[2,5],[3,5],[4,5],[4,4],[4,3],[4,2],[4,1],[4,0]
+]; // 40 hücre
+
+/* Başlangıç evleri: dört köşe blok (4 taşlık) */
+const startBlocks = {
+  0: [[0,0],[0,1],[1,0],[1,1]],          // Mavi sol-üst
+  1: [[9,0],[9,1],[10,0],[10,1]],        // Turuncu sağ-üst
+  2: [[9,9],[9,10],[10,9],[10,10]],      // Yeşil sağ-alt
+  3: [[0,9],[0,10],[1,9],[1,10]],        // Kırmızı sol-alt
+};
+
+/* Ev yolları (4 hücre): her oyuncu için ring girişinden merkeze doğru */
+const homePaths = {
+  0: [[1,5],[2,5],[3,5],[4,5]],
+  1: [[5,1],[5,2],[5,3],[5,4]],
+  2: [[9,5],[8,5],[7,5],[6,5]],
+  3: [[5,9],[5,8],[5,7],[5,6]],
+};
+
+/* ========= Yardımcı ========= */
+const gridEl = document.getElementById('grid');
+const logEl  = document.getElementById('log');
+const diceEl = document.getElementById('dice');
+const banner = document.getElementById('banner');
+const winnerName = document.getElementById('winnerName');
+
+function log(msg){ const t = document.createElement('div'); t.innerHTML = msg; logEl.prepend(t); }
+function key(x,y){ return `${x}-${y}`; }
+
+function createCell(x,y, cls=''){
+  const c = document.createElement('div');
+  c.className = `cell ${cls}`;
+  c.dataset.xy = key(x,y);
+  c.style.gridColumnStart = x+1;
+  c.style.gridRowStart = y+1;
+  gridEl.appendChild(c);
+  return c;
+}
+
+function findCellByXY([x,y]){ return gridEl.querySelector(`.cell[data-xy="${key(x,y)}"]`); }
+
+/* ========= Tahta kur ========= */
+function setupBoard(){
+  gridEl.innerHTML = '';
+  banner.style.display = 'none';
+  // 11x11 genel hücreleri oluştur (görsel doluluk için)
+  for(let y=0;y<11;y++){
+    for(let x=0;x<11;x++){ createCell(x,y); }
+  }
+  // Ring
+  STATE.ring = ringPath.map((xy,i)=>{
+    const cell = findCellByXY(xy);
+    cell.classList.add('ring');
+    cell.dataset.ring = i;
+    return {xy, cell};
+  });
+  // Starts + Homes
+  for(let p=0;p<4;p++){
+    const cls = `p${p}`;
+    STATE.starts[p] = startBlocks[p].map(xy=>{
+      const c = findCellByXY(xy); c.classList.add(cls,'start'); return c;
+    });
+    STATE.homes[p]  = homePaths[p].map(xy=>{
+      const c = findCellByXY(xy); c.classList.add(cls,'home'); return c;
+    });
+  }
+}
+
+/* ========= Parça (taş) üret ========= */
+function createPieces(){
+  STATE.pieces = [];
+  for(let p=0;p<STATE.players;p++){
+    for(let i=0;i<4;i++){
+      const piece = document.createElement('div');
+      piece.className = `piece p${p}`;
+      piece.textContent = i+1;
+      piece.dataset.player = p;
+      piece.dataset.index  = i;
+      piece.dataset.posType= 'start';
+      piece.dataset.pos    = i; // start hücresi index
+      piece.style.transform = 'translate(0,0)';
+      STATE.starts[p][i].appendChild(piece);
+      piece.addEventListener('click', ()=> onPieceClick(piece));
+      STATE.pieces.push(piece);
+    }
+  }
+}
+
+/* ========= Oyun akışı ========= */
+function startGame(){
+  setupBoard();
+  createPieces();
+  STATE.turn = 0;
+  STATE.dice = null;
+  diceEl.textContent = '—';
+  log('<b>Yeni oyun:</b> Başlayan oyuncu Mavi.');
+  highlightTurn();
+}
+
+function highlightTurn(){
+  document.querySelectorAll('.badge').forEach(b=>{
+    b.style.outline = '';
+  });
+  document.querySelectorAll('.badge.p'+STATE.turn).forEach(b=>{
+    b.style.outline = '2px solid var(--accent)';
+  });
+}
+
+/* Zar atımı */
+function rollDice(){
+  diceEl.classList.add('shake');
+  const val = Math.floor(Math.random()*6)+1;
+  setTimeout(()=>{
+    diceEl.classList.remove('shake');
+    STATE.dice = val;
+    diceEl.textContent = val;
+    log(`<b>Zar:</b> Oyuncu ${playerName(STATE.turn)} ${val} attı.`);
+    indicateMovables();
+    // Otomatik pas: hiç hareket yoksa
+    if(getMovables().length===0){
+      log(`<b>Pas:</b> Geçerli hamle yok. Sıra geçti.`);
+      nextTurn();
+    }
+  }, 220);
+}
+
+/* Geçerli taşları vurgula */
+function indicateMovables(){
+  clearIndicators();
+  getMovables().forEach(p=>{
+    p.style.outline = '3px solid var(--accent)';
+    p.style.filter = 'drop-shadow(0 0 6px var(--accent))';
+  });
+}
+function clearIndicators(){
+  STATE.pieces.forEach(p=>{ p.style.outline=''; p.style.filter=''; });
+}
+
+/* Hamle hesaplama */
+function canMoveFromStart(piece){
+  // 6 gelmeden başlangıçtan çıkamaz
+  if(STATE.dice !== 6) return false;
+  const p = Number(piece.dataset.player);
+  const enter = STATE.enterIndex[p];
+  // Giriş hücresinde rakip varsa yenebilir; kendi varsa blok
+  const occupant = pieceAtRing(enter);
+  if(!occupant) return true;
+  return Number(occupant.dataset.player) !== p;
+}
+
+function canMoveOnRing(piece){
+  // Başlangıçta değilse ve home değilse, ring üzerinde ilerler
+  if(piece.dataset.posType!=='ring') return false;
+  const steps = STATE.dice;
+  const p = Number(piece.dataset.player);
+  const cur = Number(piece.dataset.pos); // ring indexi
+  const target = (cur + steps) % STATE.ring.length;
+
+  // Eve giriş kontrol: tam giriş noktasını geçtiyse home’a yönel
+  const enter = STATE.enterIndex[p];
+  // Eve girmek için: cur -> target arası enter’i geçip tam doğru adımda home yoluna sapma
+  // Basit kural: ring’den home’a sadece giriş noktasından tam üstüne basınca girilir
+  const goingHome = (cur < enter && target >= enter) || (cur >= enter && (cur+steps)>= enter && (cur+steps)%40===enter);
+  if(target === enter){
+    // Home yolunun ilk hücresi boş veya rakip yok (home hücrelerine rakip giremez)
+    const home0 = STATE.homes[p][0];
+    return !pieceInCell(home0);
+  }
+
+  // Normal ring adımı: hedefte kendi taşın varsa blok
+  const occ = pieceAtRing(target);
+  return !(occ && Number(occ.dataset.player)===p);
+}
+
+function canEnterHome(piece){
+  if(piece.dataset.posType!=='ring') return false;
+  const p = Number(piece.dataset.player);
+  const cur = Number(piece.dataset.pos);
+  const enter = STATE.enterIndex[p];
+  const steps = STATE.dice;
+  // Tam giriş noktasına basmak gerekiyor
+  if((cur + steps) % STATE.ring.length !== enter) return false;
+  // Home 0 boş olmalı
+  const home0 = STATE.homes[p][0];
+  return !pieceInCell(home0);
+}
+
+function canMoveInsideHome(piece){
+  if(piece.dataset.posType!=='home') return false;
+  const p = Number(piece.dataset.player);
+  const idx = Number(piece.dataset.pos); // home index 0..3
+  const target = idx + STATE.dice;
+  if(target > 3) return false; // fazla gelirse giremez
+  const cell = STATE.homes[p][target];
+  return !pieceInCell(cell);
+}
+
+/* Yardımcı: ring/home/start hücrelerinde taşı bul */
+function pieceAtRing(rIndex){
+  const cell = STATE.ring[rIndex].cell;
+  return pieceInCell(cell);
+}
+function pieceInCell(cell){
+  return [...cell.children].find(c=>c.classList.contains('piece'));
+}
+
+/* Tıklama ile hareket */
+function onPieceClick(piece){
+  const p = Number(piece.dataset.player);
+  if(p !== STATE.turn || STATE.dice===null) return;
+
+  // Başlangıçtan çıkış
+  if(piece.dataset.posType==='start' && canMoveFromStart(piece)){
+    moveFromStart(piece);
+    finalizeMove();
+    return;
+  }
+
+  // Home’a giriş (ring -> home0)
+  if(piece.dataset.posType==='ring' && canEnterHome(piece)){
+    moveToHome(piece, 0);
+    finalizeMove();
+    return;
+  }
+
+  // Home içinde ilerleme
+  if(piece.dataset.posType==='home' && canMoveInsideHome(piece)){
+    const target = Number(piece.dataset.pos) + STATE.dice;
+    moveToHome(piece, target);
+    finalizeMove();
+    return;
+  }
+
+  // Ring üzerinde ilerleme
+  if(canMoveOnRing(piece)){
+    const cur = Number(piece.dataset.pos);
+    const target = (cur + STATE.dice) % STATE.ring.length;
+    moveOnRing(piece, target);
+    finalizeMove();
+    return;
+  }
+}
+
+/* Hamle sonrası: kazanma, sıra, zar 6 ise tekrar vb. */
+function finalizeMove(){
+  clearIndicators();
+  checkWin();
+  const again = (STATE.dice===6);
+  STATE.dice = null;
+  diceEl.textContent = '—';
+  if(again){
+    log(`<b>Tebrik:</b> 6 attın, tekrar zar at!`);
+  }else{
+    nextTurn();
+  }
+}
+
+/* Sıra geçişi */
+function nextTurn(){
+  STATE.turn = (STATE.turn + 1) % STATE.players;
+  highlightTurn();
+  indicateMovables(); // bilgi amaçlı hafif yanar (zar yoksa görünmez)
+}
+
+/* ========= Hareketler ========= */
+function moveFromStart(piece){
+  const p = Number(piece.dataset.player);
+  const enter = STATE.enterIndex[p];
+  const enterCell = STATE.ring[enter].cell;
+
+  // Rakip varsa ye
+  const occ = pieceInCell(enterCell);
+  if(occ && Number(occ.dataset.player)!==p){
+    sendToStart(occ);
+    occ.classList.add('hit');
+    setTimeout(()=> occ.classList.remove('hit'), 400);
+    log(`<b>Vur:</b> ${playerName(p)} rakip taşı yedi!`);
+  }
+
+  const fromCell = STATE.starts[p][Number(piece.dataset.pos)];
+  animateToCell(piece, fromCell, enterCell);
+  piece.dataset.posType='ring';
+  piece.dataset.pos= String(enter);
+}
+
+function moveOnRing(piece, target){
+  const p = Number(piece.dataset.player);
+  const targetCell = STATE.ring[target].cell;
+  const occ = pieceInCell(targetCell);
+  if(occ && Number(occ.dataset.player)!==p){
+    sendToStart(occ);
+    occ.classList.add('hit');
+    setTimeout(()=> occ.classList.remove('hit'), 400);
+    log(`<b>Vur:</b> ${playerName(p)} rakip taşı yedi!`);
+  }
+  const curCell = currentCell(piece);
+  animateToCell(piece, curCell, targetCell);
+  piece.dataset.posType='ring';
+  piece.dataset.pos= String(target);
+}
+
+function moveToHome(piece, hIndex){
+  const p = Number(piece.dataset.player);
+  const targetCell = STATE.homes[p][hIndex];
+  const curCell = currentCell(piece);
+  animateToCell(piece, curCell, targetCell);
+  piece.dataset.posType='home';
+  piece.dataset.pos= String(hIndex);
+}
+
+function currentCell(piece){
+  return piece.parentElement;
+}
+
+function sendToStart(piece){
+  const p = Number(piece.dataset.player);
+  const i = Number(piece.dataset.index);
+  const target = STATE.starts[p][i];
+  animateToCell(piece, piece.parentElement, target);
+  piece.dataset.posType='start';
+  piece.dataset.pos= String(i);
+}
+
+/* ========= Animasyon ========= */
+/* Hücre içi translate ile akıcı taşımayı simüle ediyoruz */
+function animateToCell(piece, fromCell, toCell){
+  const a = fromCell.getBoundingClientRect();
+  const b = toCell.getBoundingClientRect();
+  const dx = (b.left - a.left);
+  const dy = (b.top  - a.top);
+  piece.style.transform = `translate(${dx}px, ${dy}px)`;
+  // Gerçek DOM taşıma gecikmeli (transition bitince)
+  setTimeout(()=>{
+    piece.style.transform = 'translate(0,0)';
+    toCell.appendChild(piece);
+  }, parseInt(getComputedStyle(piece).getPropertyValue('--speed')));
+}
+
+/* ========= Kazanma ========= */
+function checkWin(){
+  for(let p=0;p<STATE.players;p++){
+    const allHome = document.querySelectorAll(`.piece.p${p}[data-postype="home"], .piece.p${p}`).length>0
+    const homeCount = [...document.querySelectorAll(`.piece.p${p}`)]
+      .filter(pc=>pc.dataset.posType==='home' && Number(pc.dataset.pos)===3).length;
+    // Basit kazanma: dört taş da home’da ve en ileride (index 3) ise
+    const homeAll = [...document.querySelectorAll(`.piece.p${p}`)]
+      .filter(pc=>pc.dataset.posType==='home').length===4;
+    if(homeAll){
+      banner.querySelector('.dot').style.background = getPlayerColor(p);
+      winnerName.textContent = playerName(p);
+      banner.style.display = 'block';
+      log(`<b>Oyun bitti:</b> ${playerName(p)} kazandı!`);
+      disableDice();
+      return true;
+    }
+  }
+  return false;
+}
+
+function getPlayerColor(p){ return getComputedStyle(document.documentElement).getPropertyValue(`--p`).trim(); }
+
+/* ========= Movables ========= */
+function getMovables(){
+  if(STATE.dice===null) return [];
+  const pieces = STATE.pieces.filter(pc=> Number(pc.dataset.player)===STATE.turn );
+  return pieces.filter(pc=>{
+    return canMoveFromStart(pc) || canEnterHome(pc) || canMoveInsideHome(pc) || canMoveOnRing(pc);
+  });
+}
+
+/* ========= UI ========= */
+const btnStart = document.getElementById('btnStart');
+const btnDice  = document.getElementById('btnDice');
+const playersRange = document.getElementById('players');
+const playersVal   = document.getElementById('playersVal');
+
+btnStart.addEventListener('click', ()=>{
+  STATE.players = parseInt(playersRange.value,10);
+  playersVal.textContent = STATE.players;
+  enableDice();
+  startGame();
+});
+btnDice.addEventListener('click', ()=>{
+  if(btnDice.disabled) return;
+  rollDice();
+});
+
+playersRange.addEventListener('input', ()=>{
+  playersVal.textContent = playersRange.value;
+});
+
+function disableDice(){ btnDice.disabled = true; }
+function enableDice(){ btnDice.disabled = false; }
+
+/* İlk kurulum */
+setupBoard();
+</script>
+</body>
+</html>
